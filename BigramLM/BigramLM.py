@@ -1,3 +1,5 @@
+# inspired by https://www.youtube.com/watch?v=kCc8FmEb1nY
+
 import torch
 import torch.nn as nn
 import math
