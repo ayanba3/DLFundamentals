@@ -18,7 +18,7 @@ if not torch.backends.mps.is_available():
 else:
     print("MPS is available on this system.")
     device = 'mps'
-device = 'cpu' # for some reason cpu is blazing fast
+device = 'cpu' # for some reason macbook pro M1 Max runtime on cpu is 6x faster than GPU/mps
 datatype = torch.long # cross entropy loss doesn't work with int32
 # hyperparameters
 batch_size = 32
@@ -60,8 +60,8 @@ val_data = data[partition_point:]
 
 def get_batch(split, block_size, batch_size):
   data = train_data if split == 'train' else val_data
-  ix = torch.randint(len(data) - block_size, (batch_size,))
-  x= torch.stack([data[i:i+block_size] for i in ix])
+  ix = torch.randint(len(data) - block_size - 2, (batch_size,)) # Adding -2 to prevent y to roll over to beginning of data
+  x = torch.stack([data[i:i+block_size] for i in ix])
   y = torch.stack([data[i+1:i+1+block_size] for i in ix])
   x,y = x.to(device), y.to(device)
   return x,y
@@ -71,10 +71,13 @@ class BigramLanguageModel(nn.Module):
         super().__init__()
         # create a embedding table of dimension vocab_size
         self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
-        # we will learn the probability of next character in ith channel hence hidden_size==vocab_size
+        # the value in kth dimension of embedding matrix will be the probability/logit of kth word being the next word
+        # Hence we need to have hidden_size=vocab_size
 
     def forward(self, idx, targets = None):
-        #size idx (B,T) Batch,Time,Channel
+        # Size idx (B,T) B=Batch,T=Time,C=Channel (no of hidden vector)
+        # ideally we should keep the same orientation of logits for both cases which isn't the case here
+
         logits = self.token_embedding_table(idx) # (B,T,C)
         if targets == None:
             loss = None
@@ -87,10 +90,10 @@ class BigramLanguageModel(nn.Module):
 
     def generate(self, idx, max_new_tokens):
         for _ in range(max_new_tokens):
-            logits,_ = self(idx) #(B,T,C)
-            logits = logits[:,-1,:] #(B,C)
+            logits,_ = self(idx) #(B,T,C) here passing the context is meaningless but for generalization sake
+            logits = logits[:,-1,:] #(B,C) only pick the last output
             prob = F.softmax(logits, dim=-1)
-            idx_next = torch.multinomial(prob, num_samples=1) #(B,1)
+            idx_next = torch.multinomial(prob, num_samples=1) #(B,1) sample the most probable token, adding temperature and high T will improve diversity
             idx = torch.cat((idx, idx_next), dim=1) #(B,T+1)
         return idx
 
@@ -104,7 +107,7 @@ start_time = time.time()
 for steps in range(max_iters):
     xb, yb = get_batch('train', batch_size, block_size)
 
-    logits, loss = m(xb, yb)
+    logits, loss = model(xb, yb)
 
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
