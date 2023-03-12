@@ -25,6 +25,8 @@ batch_size = 32
 block_size = 8
 learning_rate = 1e-2
 max_iters = 3000
+eval_iters = 300
+eval_interval = 300
 # !wget  https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
 with open('input.txt', 'r', encoding='utf-8') as f:
   text = f.read()
@@ -66,6 +68,21 @@ def get_batch(split, block_size, batch_size):
   x,y = x.to(device), y.to(device)
   return x,y
 
+@torch.no_grad()
+def estimate_loss():
+    out = {}
+    model.eval() # dropout will behave differently during eval or training
+    for split in ['train', 'val']:
+        losses = torch.zeros(eval_iters)
+        for k in range(eval_iters):
+            X,Y = get_batch(split, batch_size, block_size)
+            logits, loss = model(X, Y)
+            losses[k] = loss.item()
+        out[split] = losses.mean()
+    model.train()
+    return out
+    
+
 class BigramLanguageModel(nn.Module):
     def __init__(self, vocab_size):
         super().__init__()
@@ -104,7 +121,7 @@ m = model.to(device)
 optimizer = torch.optim.AdamW(m.parameters(), lr=learning_rate)
 
 start_time = time.time()
-for steps in range(max_iters):
+for iter in range(max_iters):
     xb, yb = get_batch('train', batch_size, block_size)
 
     logits, loss = model(xb, yb)
@@ -113,9 +130,12 @@ for steps in range(max_iters):
     loss.backward()
     optimizer.step()
 
-    if steps % 1000 == 0:
-        print(loss.item())
+    if iter % eval_interval  == 0:
+        losses = estimate_loss()
+        print(f"step {iter}: train loss {losses['train']:.3f}, val loss {losses['val']:.3f}")
 
 print("Training finished in time: ", time.time() - start_time)
+
+
 context = torch.zeros((1,1), dtype=datatype, device=device)
 print(decode(m.generate(context, max_new_tokens=400)[0].tolist()))
