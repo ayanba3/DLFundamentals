@@ -116,7 +116,7 @@ class Head(nn.Module):
         k = self.key(x) #(B,T,H)
         v = self.value(x) #(B,T,H)
         wei = q @ k.transpose(-2,-1) * C**-0.5 #(B,T,H) @ (B,H,T) -> (B,T,T)
-        wei = wei.masked_fill(self.tril == 0, float('-inf')) # (B,T,T)
+        wei = wei.masked_fill(self.tril[:T,:T] == 0, float('-inf')) # (B,T,T)
         wei = F.softmax(wei, dim=-1) #(B,T,T)
         wei = self.dropout(wei)
         out = wei @ v #(B,T,T) @ (B,T,H) -> (B,T,H)
@@ -220,5 +220,5 @@ for iter in range(max_iters):
 print("Training finished in time: ", time.time() - start_time)
 
 
-context = torch.zeros((1,8), dtype=datatype, device=device)
+context = torch.zeros((1,1), dtype=datatype, device=device)
 print(decode(m.generate(context, max_new_tokens=400)[0].tolist()))
